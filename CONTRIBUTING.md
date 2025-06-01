@@ -15,14 +15,21 @@ about these few guidelines:
 
 This add-on aims to:
 
-- DESIGN_GOAL_1
-- DESIGN_GOAL_2
-- ...
+- Provide a parameter-centric workflow comparable to ofParameter + ofxGui in openFrameworks
+- Enable fast iteration for creative coders and artists with minimal boilerplate
+- Support live parameter editing through multiple interfaces (GUI, OSC, Web)
+- Maintain clean separation between default (artist) and user presets
+- Offer plug-and-play integration (copy to addons/, enable plugin, add autoload)
+- Ensure deterministic state and reproducible configurations for QA
+- Support remote tweaking for exhibition and installation scenarios
 
 ## Non-goals
 
 For technical or simplicity reasons, this add-on has no plans to:
 
-- NON_GOAL_1
-- NON_GOAL_2
-- ...
+- Support parameter types beyond float, int, bool, enum, color, and string
+- Provide complex GUI layout systems (focus is on auto-generated interfaces)
+- Include advanced networking features beyond OSC and basic Web dashboard
+- Support parameter animation or tweening (use Godot's Tween nodes instead)
+- Implement complex access control or multi-user collaboration features
+- Support real-time synchronization across multiple game instances
