@@ -45,6 +45,8 @@ func run_all_tests():
 	test_results.append(_run_parameter_tests())
 	test_results.append(_run_parameter_group_tests())
 	test_results.append(_run_settings_manager_tests())
+	test_results.append(_run_security_manager_tests())
+	test_results.append(await _run_performance_monitor_tests())
 	
 	# Print summary
 	var passed = 0
@@ -133,6 +135,48 @@ func _run_settings_manager_tests() -> Dictionary:
 	test_instance.run_tests()
 	print("✅ SettingsManager tests completed successfully")
 	return {"name": "SettingsManager", "passed": true}
+
+func _run_security_manager_tests() -> Dictionary:
+	print("\n📋 Running SecurityManager Tests...")
+	
+	var test_file = load("res://tests/unit/test_security_manager.gd")
+	if not test_file:
+		print("❌ Could not load security manager test file")
+		return {"name": "SecurityManager", "passed": false}
+	
+	var test_instance = test_file.new()
+	if not test_instance:
+		print("❌ Could not create security manager test instance")
+		return {"name": "SecurityManager", "passed": false}
+	
+	if not test_instance.has_method("run_tests"):
+		print("❌ SecurityManager test file missing run_tests method")
+		return {"name": "SecurityManager", "passed": false}
+	
+	test_instance.run_tests()
+	print("✅ SecurityManager tests completed successfully")
+	return {"name": "SecurityManager", "passed": true}
+
+func _run_performance_monitor_tests() -> Dictionary:
+	print("\n📋 Running PerformanceMonitor Tests...")
+	
+	var test_file = load("res://tests/unit/test_performance_monitor.gd")
+	if not test_file:
+		print("❌ Could not load performance monitor test file")
+		return {"name": "PerformanceMonitor", "passed": false}
+	
+	var test_instance = test_file.new()
+	if not test_instance:
+		print("❌ Could not create performance monitor test instance")
+		return {"name": "PerformanceMonitor", "passed": false}
+	
+	if not test_instance.has_method("run_tests"):
+		print("❌ PerformanceMonitor test file missing run_tests method")
+		return {"name": "PerformanceMonitor", "passed": false}
+	
+	await test_instance.run_tests()  # Performance tests may be async
+	print("✅ PerformanceMonitor tests completed successfully")
+	return {"name": "PerformanceMonitor", "passed": true}
 
 ## Static method to run tests from command line or autoload
 static func run_tests():

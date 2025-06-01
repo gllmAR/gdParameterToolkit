@@ -11,7 +11,8 @@ config_version=5
 [application]
 
 config/name="Parameter Toolkit"
-run/main_scene="res://main.tscn"
+config/description="Godot 4.4 Parameter Management System"
+run/main_scene="uid://rv0wr60ok26g"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -23,3 +24,8 @@ SettingsManager="*res://addons/parameter_toolkit/core/settings_manager.gd"
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/parameter_toolkit/plugin.cfg")
+
+[parameter_toolkit]
+
+monitoring/enabled=true
+security/profile="development"

@@ -1,346 +1,206 @@
 # Copyright © 2024 Parameter Toolkit Contributors - MIT License
+
 class_name ParameterGroup extends RefCounted
 
-## Hierarchical container for parameters and sub-groups.
-##
-## Provides path-based parameter lookup and JSON serialization for entire parameter trees.
-## Supports inheritance and templates for rapid parameter creation.
+## Hierarchical container for parameters and sub-groups
 
-signal parameter_added(parameter)
-signal parameter_removed(parameter_name: String)
-signal group_added(group: ParameterGroup)
-signal group_removed(group_name: String)
-
-## Group identification
-var name: String = ""
+var name: String
 var description: String = ""
-var path: String = ""  # Full path like "visual" or "visual/effects"
-
-## Collections
-var parameters: Dictionary = {}  # String -> Parameter
-var groups: Dictionary = {}      # String -> ParameterGroup
+var parameters: Dictionary = {}  # name -> Parameter
+var groups: Dictionary = {}      # name -> ParameterGroup
+var parent: ParameterGroup = null
 
 ## Performance optimization
-var _param_cache: Dictionary = {}  # Full path -> Parameter
-var _cache_dirty: bool = true
-
-## Parent reference for path building
-var parent: ParameterGroup = null
+var _param_cache: Dictionary = {}
+var _cache_valid: bool = false
 
 func _init(group_name: String = ""):
 	name = group_name
 
-## Add a parameter to this group
-func add_parameter(parameter) -> bool:
-	if parameter.name in parameters:
-		push_warning("Parameter '%s' already exists in group '%s'" % [parameter.name, name])
-		return false
+func add_parameter(parameter) -> void:
+	if parameter == null:
+		push_error("Cannot add null parameter")
+		return
 	
 	parameters[parameter.name] = parameter
-	parameter.path = _build_parameter_path(parameter.name)
 	_invalidate_cache()
-	parameter_added.emit(parameter)
-	return true
 
-## Remove a parameter from this group
-func remove_parameter(parameter_name: String) -> bool:
-	if parameter_name not in parameters:
-		return false
-	
-	var _parameter = parameters[parameter_name]
-	parameters.erase(parameter_name)
-	_invalidate_cache()
-	parameter_removed.emit(parameter_name)
-	return true
-
-## Get a parameter by name (local to this group)
-func get_parameter(parameter_name: String):
-	return parameters.get(parameter_name)
-
-## Add a sub-group to this group
-func add_group(group: ParameterGroup) -> bool:
-	if group.name in groups:
-		push_warning("Group '%s' already exists in group '%s'" % [group.name, name])
-		return false
+func add_group(group: ParameterGroup) -> void:
+	if group == null:
+		push_error("Cannot add null group")
+		return
 	
 	groups[group.name] = group
 	group.parent = self
-	group.path = _build_group_path(group.name)
-	group._update_all_paths()
 	_invalidate_cache()
-	group_added.emit(group)
-	return true
 
-## Remove a sub-group from this group
-func remove_group(group_name: String) -> bool:
-	if group_name not in groups:
-		return false
-	
-	var group = groups[group_name]
-	group.parent = null
-	groups.erase(group_name)
-	_invalidate_cache()
-	group_removed.emit(group_name)
-	return true
+## Get parameter by name (within this group only)
+func get_parameter_by_name(param_name: String):
+	return parameters.get(param_name)
 
-## Get a sub-group by name (local to this group)
-func get_group(group_name: String) -> ParameterGroup:
+## Get group by name (within this group only)  
+func get_group_by_name(group_name: String):
 	return groups.get(group_name)
 
-## Get a parameter by full path (e.g., "visual/brightness")
-func get_param(param_path: String):
-	if _cache_dirty:
+## Get parameter by path (supports traversal)
+func get_param(path: String):
+	if path.is_empty():
+		return null
+	
+	# If no cache or cache is invalid, rebuild it
+	if not _cache_valid:
 		_rebuild_cache()
 	
-	return _param_cache.get(param_path)
-
-## Set a parameter value by path
-func set_param(param_path: String, value: Variant) -> bool:
-	var parameter = get_param(param_path)
-	if parameter:
-		return parameter.set_value(value)
+	# First try direct cache lookup
+	if _param_cache.has(path):
+		return _param_cache[path]
 	
-	push_warning("Parameter not found: %s" % param_path)
-	return false
+	# If not found, try manual traversal for debugging
+	return _get_param_manual(path)
 
-## Get a parameter value by path
-func get_param_value(param_path: String, default_value: Variant = null) -> Variant:
-	var parameter = get_param(param_path)
-	if parameter:
-		return parameter.get_value()
+## Manual parameter traversal for fallback and debugging
+func _get_param_manual(path: String):
+	var parts = path.split("/")
+	var current_group = self
+	
+	# Navigate to the target group
+	for i in range(parts.size() - 1):
+		var part = parts[i]
+		if part.is_empty():
+			continue
+		
+		if current_group.groups.has(part):
+			current_group = current_group.groups[part]
+		else:
+			print("ParameterGroup: Group '%s' not found in path '%s'" % [part, path])
+			return null
+	
+	# Get the parameter from the final group
+	var param_name = parts[-1]
+	if current_group.parameters.has(param_name):
+		return current_group.parameters[param_name]
+	else:
+		print("ParameterGroup: Parameter '%s' not found in group '%s'" % [param_name, current_group.name])
+		return null
+
+## Get parameter value by path with default fallback
+func get_param_value(path: String, default_value: Variant = null) -> Variant:
+	var param = get_param(path)
+	if param:
+		return param.get_value()
 	return default_value
 
-## Get all parameter paths in this group and sub-groups
-func get_all_param_paths() -> Array[String]:
-	if _cache_dirty:
-		_rebuild_cache()
+## Get group by path (supports traversal)
+func get_group(path: String):
+	var parts = path.split("/")
+	var current_group = self
 	
-	return _param_cache.keys()
+	for part in parts:
+		if part.is_empty():
+			continue
+		
+		if current_group.groups.has(part):
+			current_group = current_group.groups[part]
+		else:
+			return null
+	
+	return current_group
 
-## Create a parameter from a template
-func create_from_template(param_name: String, template_data: Dictionary):
-	var ParameterClass = load("res://addons/parameter_toolkit/core/parameter.gd")
-	var parameter = ParameterClass.new(param_name, template_data.get("type", "float"))
+## Get the full path of this group
+func get_path() -> String:
+	if parent == null:
+		return name if name != "root" else ""
 	
-	# Apply template properties
-	if template_data.has("value"):
-		parameter.default_value = template_data["value"]
-		parameter.value = template_data["value"]
-	if template_data.has("min"):
-		parameter.min_value = template_data["min"]
-	if template_data.has("max"):
-		parameter.max_value = template_data["max"]
-	if template_data.has("step"):
-		parameter.step = template_data["step"]
-	if template_data.has("enum_values"):
-		parameter.enum_values = template_data["enum_values"]
-	if template_data.has("exposed"):
-		parameter.exposed = template_data["exposed"]
-	if template_data.has("ui_hints"):
-		parameter.ui_hints = template_data["ui_hints"]
-	if template_data.has("description"):
-		parameter.description = template_data["description"]
-	
-	return parameter
+	var parent_path = parent.get_path()
+	if parent_path.is_empty():
+		return name
+	return parent_path + "/" + name
 
-## Convert to JSON dictionary
-func to_json() -> Dictionary:
-	var json_data = {
+func _rebuild_cache() -> void:
+	_param_cache.clear()
+	_build_cache_recursive("", self)
+	_cache_valid = true
+	print("ParameterGroup: Cache rebuilt with %d parameters" % _param_cache.size())
+
+func _build_cache_recursive(path_prefix: String, group: ParameterGroup) -> void:
+	# Add parameters from this group
+	for param_name in group.parameters.keys():
+		var full_path = param_name if path_prefix.is_empty() else path_prefix + "/" + param_name
+		_param_cache[full_path] = group.parameters[param_name]
+		print("ParameterGroup: Cached parameter: %s" % full_path)
+	
+	# Recurse into sub-groups
+	for group_name in group.groups.keys():
+		var sub_group = group.groups[group_name]
+		var group_path = group_name if path_prefix.is_empty() else path_prefix + "/" + group_name
+		_build_cache_recursive(group_path, sub_group)
+
+func _invalidate_cache() -> void:
+	_cache_valid = false
+	if parent:
+		parent._invalidate_cache()
+
+func get_stats() -> Dictionary:
+	var total_params = parameters.size()
+	var total_groups = groups.size()
+	
+	for group in groups.values():
+		var sub_stats = group.get_stats()
+		total_params += sub_stats.total_parameters
+		total_groups += sub_stats.total_groups
+	
+	return {
+		"total_parameters": total_params,
+		"total_groups": total_groups
+	}
+
+func to_json() -> Array:
+	var result = []
+	
+	# Convert this group to JSON
+	var group_data = {
 		"name": name,
+		"description": description,
 		"params": [],
 		"groups": []
 	}
 	
-	if description != "":
-		json_data["description"] = description
+	# Add parameters
+	for parameter in parameters.values():
+		group_data.params.append(parameter.to_json())
 	
-	# Serialize parameters
-	for param in parameters.values():
-		json_data["params"].append(param.to_json())
-	
-	# Serialize sub-groups
+	# Add sub-groups
 	for group in groups.values():
-		json_data["groups"].append(group.to_json())
+		var sub_group_array = group.to_json()
+		group_data.groups.append_array(sub_group_array)
 	
-	return json_data
+	result.append(group_data)
+	return result
 
-## Load from JSON dictionary
-func from_json(json_data: Dictionary) -> bool:
-	if not json_data.has("name"):
-		push_error("ParameterGroup JSON missing required field: name")
+func from_json(data: Dictionary) -> bool:
+	if not data.has("name"):
 		return false
 	
-	name = json_data["name"]
-	description = json_data.get("description", "")
+	name = data.name
+	description = data.get("description", "")
 	
-	# Clear existing data
+	# Clear existing content
 	parameters.clear()
 	groups.clear()
 	
 	# Load parameters
-	if json_data.has("params"):
-		if not _load_parameters_from_json(json_data["params"]):
-			return false
+	if data.has("params"):
+		var ParameterClass = load("res://addons/parameter_toolkit/core/parameter.gd")
+		for param_data in data.params:
+			var parameter = ParameterClass.new()
+			if parameter.from_json(param_data):
+				add_parameter(parameter)
 	
 	# Load sub-groups
-	if json_data.has("groups"):
-		if not _load_groups_from_json(json_data["groups"]):
-			return false
+	if data.has("groups"):
+		for group_data in data.groups:
+			var group = ParameterGroup.new()
+			if group.from_json(group_data):
+				add_group(group)
 	
 	return true
-
-func _load_parameters_from_json(params_data: Array) -> bool:
-	for param_data in params_data:
-		if not param_data is Dictionary:
-			push_error("Invalid parameter data format")
-			continue
-		
-		var ParameterClass = load("res://addons/parameter_toolkit/core/parameter.gd")
-		if not ParameterClass:
-			push_error("Failed to load Parameter class")
-			return false
-		
-		var parameter = ParameterClass.new()
-		if parameter.from_json(param_data):
-			add_parameter(parameter)
-		else:
-			push_error("Failed to load parameter: %s" % param_data.get("name", "unknown"))
-			return false
-	
-	return true
-
-func _load_groups_from_json(groups_data: Array) -> bool:
-	for group_data in groups_data:
-		if not group_data is Dictionary:
-			push_error("Invalid group data format")
-			continue
-		
-		var group = ParameterGroup.new()
-		if group.from_json(group_data):
-			add_group(group)
-		else:
-			push_error("Failed to load group: %s" % group_data.get("name", "unknown"))
-			return false
-	
-	return true
-
-## Merge another group's data into this group (for user preset loading)
-func merge_json(json_data: Dictionary, overwrite: bool = false) -> void:
-	# Merge parameters
-	if json_data.has("params"):
-		_merge_parameters_from_json(json_data["params"], overwrite)
-	
-	# Merge sub-groups
-	if json_data.has("groups"):
-		_merge_groups_from_json(json_data["groups"], overwrite)
-
-func _merge_parameters_from_json(params_data: Array, overwrite: bool) -> void:
-	var ParameterClass = load("res://addons/parameter_toolkit/core/parameter.gd")
-	if not ParameterClass:
-		push_error("Failed to load Parameter class for merging")
-		return
-	
-	for param_data in params_data:
-		if not param_data is Dictionary:
-			continue
-		
-		var param_name = param_data.get("name", "")
-		if param_name == "":
-			continue
-		
-		var existing_param = get_parameter(param_name)
-		if existing_param and param_data.has("value"):
-			existing_param.set_value(param_data["value"])
-		elif not existing_param and overwrite:
-			var new_param = ParameterClass.new()
-			if new_param.from_json(param_data):
-				add_parameter(new_param)
-
-func _merge_groups_from_json(groups_data: Array, overwrite: bool) -> void:
-	for group_data in groups_data:
-		if not group_data is Dictionary:
-			continue
-		
-		var group_name = group_data.get("name", "")
-		if group_name == "":
-			continue
-		
-		var existing_group = get_group(group_name)
-		if existing_group:
-			existing_group.merge_json(group_data, overwrite)
-		elif overwrite:
-			var new_group = ParameterGroup.new()
-			if new_group.from_json(group_data):
-				add_group(new_group)
-
-## Get statistics about this group
-func get_stats() -> Dictionary:
-	var total_params = 0
-	var total_groups = 0
-	var max_depth = 0
-	
-	_calculate_stats(total_params, total_groups, max_depth, 0)
-	
-	return {
-		"total_parameters": total_params,
-		"total_groups": total_groups,
-		"max_depth": max_depth
-	}
-
-# Private helper methods
-
-func _build_parameter_path(param_name: String) -> String:
-	if path == "":
-		return param_name
-	return path + "/" + param_name
-
-func _build_group_path(group_name: String) -> String:
-	if path == "":
-		return group_name
-	return path + "/" + group_name
-
-func _update_all_paths() -> void:
-	# Update own path
-	if parent:
-		path = parent._build_group_path(name)
-	else:
-		path = name if name != "" else ""
-	
-	# Update parameter paths
-	for param in parameters.values():
-		param.path = _build_parameter_path(param.name)
-	
-	# Update sub-group paths recursively
-	for group in groups.values():
-		group._update_all_paths()
-	
-	_invalidate_cache()
-
-func _invalidate_cache() -> void:
-	_cache_dirty = true
-	if parent:
-		parent._invalidate_cache()
-
-func _rebuild_cache() -> void:
-	_param_cache.clear()
-	_build_cache_recursive()
-	_cache_dirty = false
-
-func _build_cache_recursive() -> void:
-	# Add own parameters
-	for param in parameters.values():
-		_param_cache[param.path] = param
-	
-	# Add sub-group parameters recursively
-	for group in groups.values():
-		group._build_cache_recursive()
-		for param_path in group._param_cache:
-			_param_cache[param_path] = group._param_cache[param_path]
-
-func _calculate_stats(total_params: int, total_groups: int, max_depth: int, current_depth: int) -> void:
-	total_params += parameters.size()
-	total_groups += groups.size()
-	max_depth = max(max_depth, current_depth)
-	
-	for group in groups.values():
-		group._calculate_stats(total_params, total_groups, max_depth, current_depth + 1)

@@ -1,33 +1,41 @@
 # Copyright © 2024 Parameter Toolkit Contributors - MIT License
-# See `LICENSE.md` included in the source distribution for details.
+
 @tool
 extends EditorPlugin
 
-const SETTINGS_MANAGER_PATH = "res://addons/parameter_toolkit/core/settings_manager.gd"
-const DOCK_SCENE_PATH = "res://addons/parameter_toolkit/editor/parameter_dock.tscn"
-
-var dock_instance = null
+const AUTOLOAD_NAME = "SettingsManager"
+const AUTOLOAD_PATH = "res://addons/parameter_toolkit/core/settings_manager.gd"
 
 func _enter_tree():
-	# Add the autoload for SettingsManager
-	add_autoload_singleton("SettingsManager", SETTINGS_MANAGER_PATH)
 	print("Parameter Toolkit: Plugin enabled")
-
-	# Create and add the dock
-	if FileAccess.file_exists(DOCK_SCENE_PATH):
-		var dock_scene = load(DOCK_SCENE_PATH)
-		if dock_scene:
-			dock_instance = dock_scene.instantiate()
-			add_control_to_dock(DOCK_SLOT_LEFT_UR, dock_instance)
+	
+	# Add the SettingsManager autoload
+	if not ProjectSettings.has_setting("autoload/" + AUTOLOAD_NAME):
+		add_autoload_singleton(AUTOLOAD_NAME, AUTOLOAD_PATH)
+		print("Parameter Toolkit: SettingsManager autoload added")
 	else:
-		print("Parameter Toolkit: Dock scene not found, editor functionality limited")
+		print("Parameter Toolkit: SettingsManager autoload already exists")
+	
+	# Add editor dock
+	var dock = preload("res://addons/parameter_toolkit/editor/parameter_dock.tscn").instantiate()
+	add_control_to_dock(DOCK_SLOT_LEFT_UR, dock)
+	print("Parameter Toolkit: Editor dock ready")
 
 func _exit_tree():
-	# Remove autoload
-	remove_autoload_singleton("SettingsManager")
 	print("Parameter Toolkit: Plugin disabled")
 	
-	# Remove dock
-	if dock_instance:
-		remove_control_from_docks(dock_instance)
-		dock_instance = null
+	# Remove the autoload
+	if ProjectSettings.has_setting("autoload/" + AUTOLOAD_NAME):
+		remove_autoload_singleton(AUTOLOAD_NAME)
+		print("Parameter Toolkit: SettingsManager autoload removed")
+	
+	# Remove editor dock
+	remove_control_from_docks(get_dock_control())
+
+func get_dock_control():
+	# Find and return the parameter dock control
+	for dock_container in [DOCK_SLOT_LEFT_UR, DOCK_SLOT_LEFT_BR, DOCK_SLOT_RIGHT_UL, DOCK_SLOT_RIGHT_UR]:
+		var dock = get_editor_interface().get_editor_main_screen().find_child("ParameterDock")
+		if dock:
+			return dock
+	return null
