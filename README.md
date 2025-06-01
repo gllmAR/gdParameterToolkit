@@ -3,7 +3,7 @@
 A reusable add-on that gives Godot 4.4 projects a parameter-centric workflow comparable to ofParameter + ofxGui in openFrameworks.
 
 This repository only contains the add-on. See
-[parameter-toolkit-demo](https://github.com/parameter-toolkit/parameter-toolkit-demo)
+[gdParameterToolkit-demo](https://github.com/gllmAR/gdParameterToolkit-demo)
 for the demonstration project.
 
 ## Features
@@ -38,11 +38,11 @@ following its `master` branch.
 - Clone this Git repository:
 
 ```bash
-git clone https://github.com/parameter-toolkit/parameter-toolkit.git
+git clone https://github.com/gllmAR/gdParameterToolkit.git
 ```
 
 Alternatively, you can
-[download a ZIP archive](https://github.com/parameter-toolkit/parameter-toolkit/archive/master.zip)
+[download a ZIP archive](https://github.com/gllmAR/gdParameterToolkit/archive/master.zip)
 if you do not have Git installed.
 
 - Move the `addons/` folder to your project folder.
@@ -61,7 +61,7 @@ if you do not have Git installed.
 5. **Add settings panel** to your game for runtime adjustments
 6. **Optional**: Enable OSC bridge or Web dashboard for remote control
 
-See the [documentation](docs/) and [demo project](https://github.com/parameter-toolkit/parameter-toolkit-demo) for detailed usage examples.
+See the [documentation](docs/) and [demo project](https://github.com/gllmAR/gdParameterToolkit-demo) for detailed usage examples.
 
 ## License
 
